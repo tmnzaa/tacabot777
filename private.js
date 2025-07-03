@@ -49,12 +49,4 @@ module.exports = async (sock, msg) => {
       text: `🙋‍♂️ *OWNER TACATIC BOT 04*\n\nKalau ada yang mau ditanyain, chat aja abangku:\n🌐 https://wa.me/${OWNER_NUM}\n\nJangan gombalin ya 🙈`
     })
   }
-
-  // ✨ Jawaban default kalau chat bukan perintah
-  const isCommand = ['.menu', '.fitur', '.sewa', '.owner'].includes(text.toLowerCase())
-  if (!isCommand) {
-    return sock.sendMessage(from, {
-      text: `👋 Hai! Aku *Tacatic Bot 04* siap bantu kamu!\n\nKetik *_.menu_* buat mulai~`
-    })
-  }
 }
