@@ -207,6 +207,26 @@ for (let f of fiturList) {
   }
 }
 
+  if (msg.messageStubType === 27 && fitur?.welcome) {
+  const userJoin = msg.messageStubParameters[0] + '@s.whatsapp.net'
+
+  let pp
+  try {
+    pp = await sock.profilePictureUrl(userJoin, 'image')
+  } catch {
+    pp = 'https://telegra.ph/file/265c67209d4baf9e5c8ed.jpg' // fallback image
+  }
+
+  const imageBuffer = await require('axios').get(pp, { responseType: 'arraybuffer' })
+  const pushName = msg.pushName || 'Pengguna Baru'
+
+  await sock.sendMessage(from, {
+    image: imageBuffer.data,
+    caption: `👋 Selamat datang @${userJoin.split('@')[0]}!\n\n📛 *Nama:* ${pushName}\n🎉 Selamat bergabung di grup *${fitur.nama || 'ini'}*!\n\nSemoga betah dan jangan lupa peraturan ya! 😊`,
+    mentions: [userJoin]
+  })
+}
+
   // 👮 .tagall tanpa tampil mention (silent mention)
 if (text.startsWith('.tagall')) {
   const isi = text.split('.tagall')[1]?.trim()
