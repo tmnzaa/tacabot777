@@ -8,7 +8,9 @@ const P = require('pino')
 const { Boom } = require('@hapi/boom')
 const schedule = require('node-schedule')
 const fs = require('fs-extra')
+const axios = require('axios')
 
+// === File Database ===
 const dbFile = './grup.json'
 if (!fs.existsSync(dbFile)) fs.writeJsonSync(dbFile, {})
 
@@ -28,11 +30,12 @@ function resetFiturSaatRestart() {
     totalReset++
   }
   fs.writeJsonSync(dbFile, db, { spaces: 2 })
-  console.log(`♻️ Semua fitur dinonaktifkan otomatis di ${totalReset} grup karena bot restart.`)
+  console.log(`♻️ Semua fitur dimatikan di ${totalReset} grup karena restart.`)
 }
 
 async function startBot() {
   const { state, saveCreds } = await useMultiFileAuthState('./session')
+
   const sock = makeWASocket({
     auth: state,
     logger: P({ level: 'silent' }),
@@ -62,42 +65,21 @@ async function startBot() {
     }
   })
 
-  // 📨 Pesan Masuk
+  // 📥 Message handler
   sock.ev.on('messages.upsert', async ({ messages }) => {
     const msg = messages[0]
-    if (!msg.message || !msg.key.remoteJid || msg.key.fromMe) return
+    if (!msg.message) return
+    if (!msg.key.remoteJid || msg.key.id.startsWith('BAE5') || msg.key.fromMe) return
 
-    const from = msg.key.remoteJid
-    const text = msg.message?.conversation || msg.message?.extendedTextMessage?.text || ''
-    const sender = msg.key.participant || msg.key.remoteJid
-    const isGroup = from.endsWith('@g.us')
-    const isCommand = text.startsWith('.')
-    const db = fs.readJsonSync(dbFile)
-    db[from] = db[from] || {}
-    const fitur = db[from]
-    fs.writeJsonSync(dbFile, db, { spaces: 2 })
-
-    if (!isGroup) return
-    if (text === '.welcome on') {
-      fitur.welcome = true
-      fs.writeJsonSync(dbFile, db, { spaces: 2 })
-      await sock.sendMessage(from, { text: '✅ Fitur *welcome* diaktifkan!' })
-    }
-
-    if (text === '.welcome off') {
-      fitur.welcome = false
-      fs.writeJsonSync(dbFile, db, { spaces: 2 })
-      await sock.sendMessage(from, { text: '❌ Fitur *welcome* dimatikan.' })
-    }
-
-    if (text === '.menu') {
-      await sock.sendMessage(from, {
-        text: `📋 *TACATIC BOT 04 - MENU*\n\n🎉 _.welcome on/off_ → Aktifkan sambutan masuk\n\nGunakan hanya jika bot sudah admin.`
-      })
+    try {
+      require('./grup')(sock, msg)
+      require('./private')(sock, msg)
+    } catch (err) {
+      console.error('💥 Error handle pesan:', err)
     }
   })
 
-  // 👋 Sambut Member Baru
+  // 👋 WELCOME Feature (INI YANG KAMU MAU BRO)
   sock.ev.on('group-participants.update', async (update) => {
     const db = fs.readJsonSync(dbFile)
     const fitur = db[update.id]
@@ -105,16 +87,13 @@ async function startBot() {
 
     try {
       const metadata = await sock.groupMetadata(update.id)
-      const participants = update.participants
-
-      for (const jid of participants) {
+      for (const jid of update.participants) {
         if (update.action === 'add') {
-          const pp = await sock.profilePictureUrl(jid, 'image')
-            .catch(() => 'https://i.ibb.co/dG6kR8k/avatar-group.png')
-          const name = metadata.participants.find(p => p.id === jid)?.notify || 'Member baru'
+          const pp = await sock.profilePictureUrl(jid, 'image').catch(() => 'https://i.ibb.co/dG6kR8k/avatar-group.png')
+          const name = metadata.participants.find(p => p.id === jid)?.notify || 'Teman baru'
           await sock.sendMessage(update.id, {
             image: { url: pp },
-            caption: `🎉 Selamat datang @${jid.split('@')[0]} di grup *${metadata.subject}*!\nSemoga betah ya~ 🥰`,
+            caption: `👋 Selamat datang @${jid.split('@')[0]} di grup *${metadata.subject}*!\nJangan lupa perkenalan ya! 🙌`,
             mentions: [jid]
           })
         }
@@ -124,10 +103,7 @@ async function startBot() {
     }
   })
 
-  startScheduler(sock)
-}
-
-function startScheduler(sock) {
+  // ⏰ AUTO OPEN & CLOSE GROUP
   schedule.scheduleJob('* * * * *', async () => {
     const now = new Date()
     const jam = now.toTimeString().slice(0, 5).replace(':', '.')
@@ -143,13 +119,14 @@ function startScheduler(sock) {
           await sock.sendMessage(id, { text: `✅ Grup dibuka otomatis jam *${jam}*` })
           delete fitur.openTime
         }
+
         if (fitur.closeTime === jam) {
           await sock.groupSettingUpdate(id, 'announcement')
           await sock.sendMessage(id, { text: `🔒 Grup ditutup otomatis jam *${jam}*` })
           delete fitur.closeTime
         }
-      } catch (e) {
-        console.error(`❌ Gagal update setting grup:`, e)
+      } catch (err) {
+        console.error('❌ Gagal update setting:', err)
       }
     }
 
@@ -157,6 +134,7 @@ function startScheduler(sock) {
   })
 }
 
+// 🛠 Global error
 process.on('unhandledRejection', err => {
   console.error('💥 Unhandled Rejection:', err)
 })
